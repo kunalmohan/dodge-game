@@ -40,7 +40,7 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
 
-    let time = Instant::now() + Duration::from_millis(40);
+    let time = Instant::now() + Duration::from_millis(400);
 
     let mut state = State::new(&window);
 
@@ -71,6 +71,7 @@ fn main() {
                 }
             }
             Event::MainEventsCleared => {
+            	state.update();
             	state.render();
                 *control_flow = ControlFlow::WaitUntil(time);
             },
@@ -90,7 +91,10 @@ struct State {
 	index_buffer: wgpu::Buffer,
 	vertex_buffer: wgpu::Buffer,
 	camera: Camera,
+	player_controller: PlayerController,
 	uniform_bind_group: wgpu::BindGroup,
+	player_position: PlayerPosition,
+	position_buffer: wgpu::Buffer,
 }
 
 impl State {
@@ -130,9 +134,17 @@ impl State {
         	],
         };
 
+        let player_position = PlayerPosition {
+        	position: 0.0f32,
+        };
+
+        let position_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&[player_position]);
+
+        let player_controller = PlayerController::new(0.3);
+
         let camera = Camera {
-    	    eye: (0.0, 4.0, -2.0).into(),
-    	    target: (0.0, 0.0, 3.0).into(),
+    	    eye: (0.0, 6.0, -4.0).into(),
+    	    target: (0.0, 0.0, 5.0).into(),
     	    up: cgmath::Vector3::unit_y(),
     	    aspect: sc_desc.width as f32 / sc_desc.height as f32,
     	    fovy: 75.0,
@@ -140,7 +152,7 @@ impl State {
     	    zfar: 100.0,
     	};
 
-        let vertex_buffer = device.create_buffer_mapped(player.vertices.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(&player.vertices);
+        let vertex_buffer = device.create_buffer_mapped(player.vertices.len(), wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST).fill_from_slice(&player.vertices);
 
         let index_buffer = device.create_buffer_mapped(INDICES.len(), wgpu::BufferUsage::INDEX).fill_from_slice(INDICES);
 
@@ -153,6 +165,13 @@ impl State {
         	bindings: &[
         		wgpu::BindGroupLayoutBinding {
         			binding: 0,
+        			visibility: wgpu::ShaderStage::VERTEX,
+        			ty: wgpu::BindingType::UniformBuffer {
+        				dynamic: false,
+        			},
+        		},
+        		wgpu::BindGroupLayoutBinding {
+        			binding: 1,
         			visibility: wgpu::ShaderStage::VERTEX,
         			ty: wgpu::BindingType::UniformBuffer {
         				dynamic: false,
@@ -171,6 +190,13 @@ impl State {
         				range: 0..std::mem::size_of_val(&uniforms) as wgpu::BufferAddress,
         			},
         		},
+        		wgpu::Binding {
+        			binding: 1,
+        			resource: wgpu::BindingResource::Buffer {
+        				buffer: &position_buffer,
+        				range: 0..std::mem::size_of_val(&player_position) as wgpu::BufferAddress,
+        			},
+        		}
         	],
         });
 
@@ -238,14 +264,29 @@ impl State {
         	vertex_buffer,
         	camera,
         	uniform_bind_group,
+        	player_controller,
+        	player_position,
+        	position_buffer,
         }
 	}
 
-	fn input(&self ,_event: &WindowEvent) -> bool {
-		false
+	fn input(&mut self ,event: &WindowEvent) -> bool {
+		self.player_controller.control(event)
 	}
 
+	fn update(&mut self) {
+		self.player_controller.update_player_position(&mut self.player_position);
 
+		let tmp_buffer = self.device.create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC).fill_from_slice(&[self.player_position]);
+
+		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+			todo: 0,
+		});
+
+		encoder.copy_buffer_to_buffer(&tmp_buffer, 0, &self.position_buffer, 0, std::mem::size_of::<f32>() as wgpu::BufferAddress);
+
+		self.queue.submit(&[encoder.finish()]);
+	}
 
 	fn render(&mut self) {
 		let frame = self.swap_chain.get_next_texture();
@@ -307,6 +348,69 @@ impl Vertex {
 	}
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct Block {
+	vertices: [Vertex; 8],
+}
+
+#[derive(Debug)]
+struct PlayerController {
+	sensitivity: f32,
+	left: bool,
+	right: bool,
+}
+
+impl PlayerController {
+	fn new(sensitivity: f32) -> Self {
+		Self {
+			sensitivity,
+			left: false,
+			right: false,
+		}
+	}
+
+	fn control(&mut self, event: &WindowEvent) -> bool {
+		match event {
+			WindowEvent::KeyboardInput {
+				input: KeyboardInput {
+					state,
+					virtual_keycode: Some(key_code),
+					..
+				},
+				..
+			} => {
+				let pressed = *state == ElementState::Pressed;
+				match key_code {
+					VirtualKeyCode::Left => {
+						self.left = pressed;
+						true
+					},
+					VirtualKeyCode::Right => {
+						self.right = pressed;
+						true
+					}
+					_ => false,
+				}
+			},
+			_ => false,
+		}
+	}
+
+	fn update_player_position(&self, player_position: &mut PlayerPosition) {
+		if self.right {
+			if player_position.position > -3.0 {
+				player_position.position -= self.sensitivity;
+			}
+		}
+		else if self.left {
+			if player_position.position < 3.0 {
+				player_position.position += self.sensitivity;
+			}
+		}
+	}
+}
+
 struct Camera {
     eye: cgmath::Point3<f32>,
     target: cgmath::Point3<f32>,
@@ -328,12 +432,6 @@ impl Camera {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Block {
-	pub vertices: [Vertex; 8],
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
 struct Uniforms {
 	view_proj: cgmath::Matrix4<f32>,
 }
@@ -348,4 +446,10 @@ impl Uniforms {
 	fn update_view_proj(&mut self, camera: &Camera) {
 		self.view_proj = camera.build_view_projection_matrix();
 	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct PlayerPosition {
+	position: f32,
 }
