@@ -5,7 +5,7 @@ use winit::{
     dpi::PhysicalSize,
 };
 use std::time::{Instant, Duration};
-use cgmath::SquareMatrix;
+use cgmath::prelude::*;
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -14,6 +14,10 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 0.0,
     0.0, 0.0, 0.5, 1.0,
 );
+
+const NUM_INSTANCES_PER_ROW: u32 = 5;
+const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
+const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32, 0.0, NUM_INSTANCES_PER_ROW as f32);
 
 pub const INDICES: &[u16] = &[
     //Top
@@ -82,19 +86,19 @@ fn main() {
 
 struct State {
 	device: wgpu::Device,
-	surface: wgpu::Surface,
-	queue: wgpu::Queue,
 	swap_chain: wgpu::SwapChain,
-	sc_desc: wgpu::SwapChainDescriptor,
-	player: Block,
-	render_pipeline: wgpu::RenderPipeline,
+	queue: wgpu::Queue,
+	player_render_pipeline: wgpu::RenderPipeline,
+	obstacle_render_pipeline: wgpu::RenderPipeline,
+	obstacle_bind_group: wgpu::BindGroup,
 	index_buffer: wgpu::Buffer,
-	vertex_buffer: wgpu::Buffer,
-	camera: Camera,
+	player_vertex_buffer: wgpu::Buffer,
+	obstacle_vertex_buffer: wgpu::Buffer,
 	player_controller: PlayerController,
 	uniform_bind_group: wgpu::BindGroup,
 	player_position: PlayerPosition,
 	position_buffer: wgpu::Buffer,
+	instances: Vec<Instance>,
 }
 
 impl State {
@@ -119,6 +123,7 @@ impl State {
             height: inner_size.height,
             present_mode: wgpu::PresentMode::Vsync,
         };
+
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
         let player = Block {
@@ -133,6 +138,39 @@ impl State {
         		Vertex { position: [-0.5, -0.3, -0.7], color: [0.2, 0.2, 0.9] },
         	],
         };
+
+        let obstacle = Block {
+        	vertices: [
+        		Vertex { position: [-0.2, 0.2, 0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [0.2, 0.2, 0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [-0.2, 0.2, -0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [0.2, 0.2, -0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [0.2, -0.2, 0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [0.2, -0.2, -0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [-0.2, -0.2, 0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [-0.2, -0.2, -0.2], color: [0.6, 0.6, 0.9] },
+        	]
+        };
+
+        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
+		    (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+		        let position = cgmath::Vector3 { x: x as f32, y: 0.0, z: z as f32 } - INSTANCE_DISPLACEMENT;
+		
+		        let rotation = if position.is_zero() {
+		            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+		        } else {
+		            cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(45.0))
+		        };
+		
+		        Instance {
+		            position, rotation,
+		        }
+		    })
+		}).collect::<Vec<_>>();
+
+		let instance_data = instances.iter().map(Instance::to_matrix).collect::<Vec<_>>();
+		let instance_buffer_size = instance_data.len() * std::mem::size_of::<cgmath::Matrix4<f32>>();
+		let instance_buffer = device.create_buffer_mapped(instance_data.len(), wgpu::BufferUsage::STORAGE_READ).fill_from_slice(&instance_data);
 
         let player_position = PlayerPosition {
         	position: 0.0f32,
@@ -152,14 +190,21 @@ impl State {
     	    zfar: 100.0,
     	};
 
-        let vertex_buffer = device.create_buffer_mapped(player.vertices.len(), wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST).fill_from_slice(&player.vertices);
+    	let obstacle_vertex_buffer = device.create_buffer_mapped(obstacle.vertices.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(&obstacle.vertices);
+
+        let player_vertex_buffer = device.create_buffer_mapped(player.vertices.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(&player.vertices);
 
         let index_buffer = device.create_buffer_mapped(INDICES.len(), wgpu::BufferUsage::INDEX).fill_from_slice(INDICES);
 
-        let mut uniforms = Uniforms::new();
-        uniforms.update_view_proj(&camera);
+        let mut player_uniforms = Uniforms::new();
+        player_uniforms.update_view_proj(&camera);
 
-        let uniform_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&[uniforms]);
+        let player_uniform_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&[player_uniforms]);
+
+        let mut obstacle_uniforms = Uniforms::new();
+        obstacle_uniforms.update_view_proj(&camera);
+
+        let obstacle_uniform_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM).fill_from_slice(&[obstacle_uniforms]);
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         	bindings: &[
@@ -186,8 +231,8 @@ impl State {
         		wgpu::Binding {
         			binding: 0,
         			resource: wgpu::BindingResource::Buffer {
-        				buffer: &uniform_buffer,
-        				range: 0..std::mem::size_of_val(&uniforms) as wgpu::BufferAddress,
+        				buffer: &player_uniform_buffer,
+        				range: 0..std::mem::size_of_val(&player_uniforms) as wgpu::BufferAddress,
         			},
         		},
         		wgpu::Binding {
@@ -196,30 +241,114 @@ impl State {
         				buffer: &position_buffer,
         				range: 0..std::mem::size_of_val(&player_position) as wgpu::BufferAddress,
         			},
-        		}
+        		},
+        	],
+        });
+
+        let obstacle_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        	bindings: &[
+        		wgpu::BindGroupLayoutBinding {
+        			binding: 0,
+        			visibility: wgpu::ShaderStage::VERTEX,
+        			ty: wgpu::BindingType::StorageBuffer {
+        				dynamic: false,
+        				readonly: true,
+        			},
+        		},
+        		wgpu::BindGroupLayoutBinding {
+        			binding: 1,
+        			visibility: wgpu::ShaderStage::VERTEX,
+        			ty: wgpu::BindingType::UniformBuffer {
+        				dynamic: false,
+        			},
+        		},
+        	],
+        });
+
+        let obstacle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        	layout: &obstacle_bind_group_layout,
+        	bindings: &[
+        		wgpu::Binding {
+        			binding: 0,
+        			resource: wgpu::BindingResource::Buffer {
+        				buffer: &instance_buffer,
+        				range: 0..instance_buffer_size as wgpu::BufferAddress,
+        			},
+        		},
+        		wgpu::Binding {
+        			binding: 1,
+        			resource: wgpu::BindingResource::Buffer {
+        				buffer: &obstacle_uniform_buffer,
+        				range: 0..std::mem::size_of_val(&obstacle_uniforms) as wgpu::BufferAddress,
+        			},
+        		},
         	],
         });
 
         let vs_src = include_str!("shader.vert");
         let fs_src = include_str!("shader.frag");
+        let vs_src2 = include_str!("shader2.vert");
 
         let vs_spriv = glsl_to_spirv::compile(vs_src, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let fs_spirv = glsl_to_spirv::compile(fs_src, glsl_to_spirv::ShaderType::Fragment).unwrap();
+        let vs_spriv2 = glsl_to_spirv::compile(vs_src2, glsl_to_spirv::ShaderType::Vertex).unwrap();
 
         let vs_data = wgpu::read_spirv(vs_spriv).unwrap();
+        let vs_data2 = wgpu::read_spirv(vs_spriv2).unwrap();
         let fs_data = wgpu::read_spirv(fs_spirv).unwrap();
 
         let vs_module = device.create_shader_module(&vs_data);
+        let vs_module2 = device.create_shader_module(&vs_data2);
         let fs_module = device.create_shader_module(&fs_data);
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let player_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         	bind_group_layouts: &[&uniform_bind_group_layout],
         });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        	layout: &render_pipeline_layout,
+        let player_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        	layout: &player_render_pipeline_layout,
         	vertex_stage: wgpu::ProgrammableStageDescriptor {
         		module: &vs_module,
+        		entry_point: "main",
+        	},
+        	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+        		module: &fs_module,
+        		entry_point: "main",
+        	}),
+        	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+        		front_face: wgpu::FrontFace::Ccw,
+        		cull_mode: wgpu::CullMode::None,
+        		depth_bias: 0,
+        		depth_bias_slope_scale: 0.0,
+        		depth_bias_clamp: 0.0,
+        	}),
+        	primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+        	color_states: &[
+        		wgpu::ColorStateDescriptor {
+        			format: wgpu::TextureFormat::Bgra8UnormSrgb,
+        			alpha_blend: wgpu::BlendDescriptor::REPLACE,
+        			color_blend: wgpu::BlendDescriptor::REPLACE,
+        			write_mask: wgpu::ColorWrite::ALL,
+        		},
+        	],
+        	depth_stencil_state: None,
+        	index_format: wgpu::IndexFormat::Uint16,
+        	vertex_buffers: &[
+        		Vertex::desc(),
+        	],
+        	sample_count: 1,
+        	sample_mask: !0,
+        	alpha_to_coverage_enabled: false,
+        });
+
+        let obstacle_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        	bind_group_layouts: &[&obstacle_bind_group_layout],
+        });
+
+        let obstacle_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        	layout: &obstacle_render_pipeline_layout,
+        	vertex_stage: wgpu::ProgrammableStageDescriptor {
+        		module: &vs_module2,
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
@@ -256,17 +385,17 @@ impl State {
         	device,
         	queue,
         	swap_chain,
-        	surface,
-        	sc_desc,
-        	player,
-        	render_pipeline,
+        	player_render_pipeline,
+        	obstacle_render_pipeline,
         	index_buffer,
-        	vertex_buffer,
-        	camera,
+        	player_vertex_buffer,
+        	obstacle_vertex_buffer,
         	uniform_bind_group,
+        	obstacle_bind_group,
         	player_controller,
         	player_position,
         	position_buffer,
+        	instances,
         }
 	}
 
@@ -309,8 +438,29 @@ impl State {
 				depth_stencil_attachment: None,
 			});
 
-			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_vertex_buffers(0, &[(&self.vertex_buffer, 0)]);
+			render_pass.set_pipeline(&self.obstacle_render_pipeline);
+			render_pass.set_vertex_buffers(0, &[(&self.obstacle_vertex_buffer, 0)]);
+			render_pass.set_index_buffer(&self.index_buffer, 0);
+			render_pass.set_bind_group(0, &self.obstacle_bind_group, &[]);
+			render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..self.instances.len() as u32);
+		}
+
+		{
+			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				color_attachments: &[
+					wgpu::RenderPassColorAttachmentDescriptor {
+						attachment: &frame.view,
+						resolve_target: None,
+						load_op: wgpu::LoadOp::Load,
+						store_op: wgpu::StoreOp::Store,
+						clear_color: wgpu::Color::WHITE,
+					},
+				],
+				depth_stencil_attachment: None,
+			});
+
+			render_pass.set_pipeline(&self.player_render_pipeline);
+			render_pass.set_vertex_buffers(0, &[(&self.player_vertex_buffer, 0)]);
 			render_pass.set_index_buffer(&self.index_buffer, 0);
 			render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 			render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
@@ -446,6 +596,17 @@ impl Uniforms {
 	fn update_view_proj(&mut self, camera: &Camera) {
 		self.view_proj = camera.build_view_projection_matrix();
 	}
+}
+
+struct Instance {
+    position: cgmath::Vector3<f32>,
+    rotation: cgmath::Quaternion<f32>,
+}
+
+impl Instance {
+    fn to_matrix(&self) -> cgmath::Matrix4<f32> {
+        cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation)
+    }
 }
 
 #[repr(C)]
