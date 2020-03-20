@@ -6,8 +6,8 @@ layout(location=1) in vec3 a_color;
 layout(location=0) out vec3 v_color;
 
 layout(set=0, binding=0)
-buffer Instances {
-	mat4 s_models[];
+uniform Instances {
+	mat4 s_models[20];
 };
 
 layout(set=0, binding=1)

@@ -2,7 +2,6 @@ use winit::{
     event_loop::{EventLoop, ControlFlow},
     event::*,
     window::Window,
-    dpi::PhysicalSize,
 };
 use std::time::{Instant, Duration};
 use cgmath::prelude::*;
@@ -14,10 +13,6 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 0.0,
     0.0, 0.0, 0.5, 1.0,
 );
-
-const NUM_INSTANCES_PER_ROW: u32 = 5;
-const NUM_INSTANCES: u32 = NUM_INSTANCES_PER_ROW * NUM_INSTANCES_PER_ROW;
-const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32, 0.0, NUM_INSTANCES_PER_ROW as f32);
 
 pub const INDICES: &[u16] = &[
     //Top
@@ -75,6 +70,7 @@ fn main() {
                 }
             }
             Event::MainEventsCleared => {
+            	state.update_instances();
             	state.update();
             	state.render();
                 *control_flow = ControlFlow::WaitUntil(time);
@@ -99,6 +95,8 @@ struct State {
 	player_position: PlayerPosition,
 	position_buffer: wgpu::Buffer,
 	instances: Vec<Instance>,
+	speed: f32,
+	instance_buffer: wgpu::Buffer,
 }
 
 impl State {
@@ -128,14 +126,14 @@ impl State {
 
         let player = Block {
         	vertices: [
-        		Vertex { position: [-0.5, 0.3, 0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.5, 0.3, 0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.5, 0.3, -0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.5, 0.3, -0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.5, -0.3, 0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.5, -0.3, -0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.5, -0.3, 0.7], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.5, -0.3, -0.7], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, 0.3, 0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, 0.3, 0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, 0.3, -0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, 0.3, -0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, -0.3, 0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, -0.3, -0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, -0.3, 0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, -0.3, -0.5], color: [0.2, 0.2, 0.9] },
         	],
         };
 
@@ -152,9 +150,15 @@ impl State {
         	]
         };
 
-        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-		    (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-		        let position = cgmath::Vector3 { x: x as f32, y: 0.0, z: z as f32 } - INSTANCE_DISPLACEMENT;
+        let speed = 0.01f32;
+
+        let mut zpos = 12.0f32;
+
+		let mut instances  = vec![];
+		for _i in 0..10 {
+			for _j in 0..2 {
+				let xpos = rand::random::<f32>() * 10.0 - 5.0;
+		        let position = cgmath::Vector3 { x: xpos as f32, y: 0.0, z: zpos as f32 };
 		
 		        let rotation = if position.is_zero() {
 		            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
@@ -162,15 +166,16 @@ impl State {
 		            cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(45.0))
 		        };
 		
-		        Instance {
+		        instances.push(Instance {
 		            position, rotation,
-		        }
-		    })
-		}).collect::<Vec<_>>();
+		        });
+			}
+			zpos += 12.0f32;
+		}
 
 		let instance_data = instances.iter().map(Instance::to_matrix).collect::<Vec<_>>();
 		let instance_buffer_size = instance_data.len() * std::mem::size_of::<cgmath::Matrix4<f32>>();
-		let instance_buffer = device.create_buffer_mapped(instance_data.len(), wgpu::BufferUsage::STORAGE_READ).fill_from_slice(&instance_data);
+		let instance_buffer = device.create_buffer_mapped(instance_data.len(), wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&instance_data);
 
         let player_position = PlayerPosition {
         	position: 0.0f32,
@@ -185,7 +190,7 @@ impl State {
     	    target: (0.0, 0.0, 5.0).into(),
     	    up: cgmath::Vector3::unit_y(),
     	    aspect: sc_desc.width as f32 / sc_desc.height as f32,
-    	    fovy: 75.0,
+    	    fovy: 60.0,
     	    znear: 0.1,
     	    zfar: 100.0,
     	};
@@ -250,9 +255,8 @@ impl State {
         		wgpu::BindGroupLayoutBinding {
         			binding: 0,
         			visibility: wgpu::ShaderStage::VERTEX,
-        			ty: wgpu::BindingType::StorageBuffer {
+        			ty: wgpu::BindingType::UniformBuffer {
         				dynamic: false,
-        				readonly: true,
         			},
         		},
         		wgpu::BindGroupLayoutBinding {
@@ -396,6 +400,8 @@ impl State {
         	player_position,
         	position_buffer,
         	instances,
+        	instance_buffer,
+        	speed,
         }
 	}
 
@@ -408,13 +414,39 @@ impl State {
 
 		let tmp_buffer = self.device.create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC).fill_from_slice(&[self.player_position]);
 
+		let instance_data = self.instances.iter().map(Instance::to_matrix).collect::<Vec<_>>();
+		let tmp_buffer2 = self.device.create_buffer_mapped(instance_data.len(), wgpu::BufferUsage::COPY_SRC).fill_from_slice(&instance_data);
+
 		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			todo: 0,
 		});
 
+		let copy_size = std::mem::size_of::<cgmath::Matrix4<f32>>() * 20usize;
+
 		encoder.copy_buffer_to_buffer(&tmp_buffer, 0, &self.position_buffer, 0, std::mem::size_of::<f32>() as wgpu::BufferAddress);
+		encoder.copy_buffer_to_buffer(&tmp_buffer2, 0, &self.instance_buffer, 0, copy_size as wgpu::BufferAddress);
 
 		self.queue.submit(&[encoder.finish()]);
+	}
+
+	fn update_instances(&mut self) {
+		for i in 0..20 {
+			self.instances[i].position[2] -= self.speed;
+			if self.instances[i].position[2] <= -1.0 {
+				self.instances[i].position[2] = 119.0f32;
+				self.instances[i].position[0] = rand::random::<f32>() * 10.0 - 5.0;
+			}
+		}
+
+		if self.speed < 1.0f32 {
+			self.speed += 0.001f32;
+		}
+		else if self.speed < 2.5f32 {
+			self.speed += 0.0001f32;
+		}
+		else {
+			self.speed += 0.00001f32;
+		}
 	}
 
 	fn render(&mut self) {
@@ -598,6 +630,7 @@ impl Uniforms {
 	}
 }
 
+#[derive(Debug)]
 struct Instance {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
