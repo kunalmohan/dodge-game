@@ -86,6 +86,7 @@ struct State {
 	queue: wgpu::Queue,
 	player_render_pipeline: wgpu::RenderPipeline,
 	obstacle_render_pipeline: wgpu::RenderPipeline,
+	road_render_pipeline: wgpu::RenderPipeline,
 	obstacle_bind_group: wgpu::BindGroup,
 	index_buffer: wgpu::Buffer,
 	player_vertex_buffer: wgpu::Buffer,
@@ -97,6 +98,7 @@ struct State {
 	instances: Vec<Instance>,
 	speed: f32,
 	instance_buffer: wgpu::Buffer,
+	road_vertex_buffer: wgpu::Buffer,
 }
 
 impl State {
@@ -124,6 +126,17 @@ impl State {
 
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
+        let road = &[
+        	Vertex { position: [-3.2, -1.0, -1.0], color: [0.3, 0.7, 0.1] },
+        	Vertex { position: [3.2, -1.0, -1.0], color: [0.3, 0.7, 0.1] },
+        	Vertex { position: [3.2, -1.0, 150.0], color: [0.3, 0.7, 0.1] },
+        	Vertex { position: [3.2, -1.0, 150.0], color: [0.3, 0.7, 0.1] },
+        	Vertex { position: [-3.2, -1.0, 150.0], color: [0.3, 0.7, 0.1] },
+        	Vertex { position: [-3.2, -1.0, -1.0], color: [0.3, 0.7, 0.1] },
+        ];
+
+        let road_vertex_buffer = device.create_buffer_mapped(road.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(road);
+
         let player = Block {
         	vertices: [
         		Vertex { position: [-0.4, 0.3, 0.5], color: [0.2, 0.2, 0.9] },
@@ -139,20 +152,20 @@ impl State {
 
         let obstacle = Block {
         	vertices: [
-        		Vertex { position: [-0.2, 0.2, 0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [0.2, 0.2, 0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [-0.2, 0.2, -0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [0.2, 0.2, -0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [0.2, -0.2, 0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [0.2, -0.2, -0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [-0.2, -0.2, 0.2], color: [0.6, 0.6, 0.9] },
-        		Vertex { position: [-0.2, -0.2, -0.2], color: [0.6, 0.6, 0.9] },
+        		Vertex { position: [-0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2] },
+        		Vertex { position: [-0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2] },
         	]
         };
 
         let speed = 0.01f32;
 
-        let mut zpos = 12.0f32;
+        let mut zpos = 15.0f32;
 
 		let mut instances  = vec![];
 		for _i in 0..10 {
@@ -170,7 +183,7 @@ impl State {
 		            position, rotation,
 		        });
 			}
-			zpos += 12.0f32;
+			zpos += 15.0f32;
 		}
 
 		let instance_data = instances.iter().map(Instance::to_matrix).collect::<Vec<_>>();
@@ -183,14 +196,14 @@ impl State {
 
         let position_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&[player_position]);
 
-        let player_controller = PlayerController::new(0.3);
+        let player_controller = PlayerController::new(0.1);
 
         let camera = Camera {
-    	    eye: (0.0, 6.0, -4.0).into(),
-    	    target: (0.0, 0.0, 5.0).into(),
+    	    eye: (0.0, 6.0, -5.0).into(),
+    	    target: (0.0, 0.0, 6.0).into(),
     	    up: cgmath::Vector3::unit_y(),
     	    aspect: sc_desc.width as f32 / sc_desc.height as f32,
-    	    fovy: 60.0,
+    	    fovy: 50.0,
     	    znear: 0.1,
     	    zfar: 100.0,
     	};
@@ -201,15 +214,10 @@ impl State {
 
         let index_buffer = device.create_buffer_mapped(INDICES.len(), wgpu::BufferUsage::INDEX).fill_from_slice(INDICES);
 
-        let mut player_uniforms = Uniforms::new();
-        player_uniforms.update_view_proj(&camera);
+        let mut uniforms = Uniforms::new();
+       	uniforms.update_view_proj(&camera);
 
-        let player_uniform_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&[player_uniforms]);
-
-        let mut obstacle_uniforms = Uniforms::new();
-        obstacle_uniforms.update_view_proj(&camera);
-
-        let obstacle_uniform_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM).fill_from_slice(&[obstacle_uniforms]);
+        let uniform_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST).fill_from_slice(&[uniforms]);
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         	bindings: &[
@@ -236,8 +244,8 @@ impl State {
         		wgpu::Binding {
         			binding: 0,
         			resource: wgpu::BindingResource::Buffer {
-        				buffer: &player_uniform_buffer,
-        				range: 0..std::mem::size_of_val(&player_uniforms) as wgpu::BufferAddress,
+        				buffer: &uniform_buffer,
+        				range: 0..std::mem::size_of_val(&uniforms) as wgpu::BufferAddress,
         			},
         		},
         		wgpu::Binding {
@@ -282,28 +290,72 @@ impl State {
         		wgpu::Binding {
         			binding: 1,
         			resource: wgpu::BindingResource::Buffer {
-        				buffer: &obstacle_uniform_buffer,
-        				range: 0..std::mem::size_of_val(&obstacle_uniforms) as wgpu::BufferAddress,
+        				buffer: &uniform_buffer,
+        				range: 0..std::mem::size_of_val(&uniforms) as wgpu::BufferAddress,
         			},
         		},
         	],
         });
 
-        let vs_src = include_str!("shader.vert");
+        let vs_src = include_str!("player.vert");
         let fs_src = include_str!("shader.frag");
-        let vs_src2 = include_str!("shader2.vert");
+        let vs_src2 = include_str!("obstacle.vert");
+        let vs_src3 = include_str!("road.vert");
 
         let vs_spriv = glsl_to_spirv::compile(vs_src, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let fs_spirv = glsl_to_spirv::compile(fs_src, glsl_to_spirv::ShaderType::Fragment).unwrap();
         let vs_spriv2 = glsl_to_spirv::compile(vs_src2, glsl_to_spirv::ShaderType::Vertex).unwrap();
+        let vs_spriv3 = glsl_to_spirv::compile(vs_src3, glsl_to_spirv::ShaderType::Vertex).unwrap();
 
         let vs_data = wgpu::read_spirv(vs_spriv).unwrap();
         let vs_data2 = wgpu::read_spirv(vs_spriv2).unwrap();
+        let vs_data3 = wgpu::read_spirv(vs_spriv3).unwrap();
         let fs_data = wgpu::read_spirv(fs_spirv).unwrap();
 
         let vs_module = device.create_shader_module(&vs_data);
         let vs_module2 = device.create_shader_module(&vs_data2);
+        let vs_module3 = device.create_shader_module(&vs_data3);
         let fs_module = device.create_shader_module(&fs_data);
+
+        let road_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        	bind_group_layouts: &[&uniform_bind_group_layout],
+        });
+
+        let road_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        	layout: &road_render_pipeline_layout,
+        	vertex_stage: wgpu::ProgrammableStageDescriptor {
+        		module: &vs_module3,
+        		entry_point: "main",
+        	},
+        	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+        		module: &fs_module,
+        		entry_point: "main",
+        	}),
+        	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+        		front_face: wgpu::FrontFace::Ccw,
+        		cull_mode: wgpu::CullMode::None,
+        		depth_bias: 0,
+        		depth_bias_slope_scale: 0.0,
+        		depth_bias_clamp: 0.0,
+        	}),
+        	primitive_topology: wgpu::PrimitiveTopology::TriangleList,
+        	color_states: &[
+        		wgpu::ColorStateDescriptor {
+        			format: wgpu::TextureFormat::Bgra8UnormSrgb,
+        			alpha_blend: wgpu::BlendDescriptor::REPLACE,
+        			color_blend: wgpu::BlendDescriptor::REPLACE,
+        			write_mask: wgpu::ColorWrite::ALL,
+        		},
+        	],
+        	depth_stencil_state: None,
+        	index_format: wgpu::IndexFormat::Uint16,
+        	vertex_buffers: &[
+        		Vertex::desc(),
+        	],
+        	sample_count: 1,
+        	sample_mask: !0,
+        	alpha_to_coverage_enabled: false,
+        });
 
         let player_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         	bind_group_layouts: &[&uniform_bind_group_layout],
@@ -321,7 +373,7 @@ impl State {
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
         		front_face: wgpu::FrontFace::Ccw,
-        		cull_mode: wgpu::CullMode::None,
+        		cull_mode: wgpu::CullMode::Back,
         		depth_bias: 0,
         		depth_bias_slope_scale: 0.0,
         		depth_bias_clamp: 0.0,
@@ -361,7 +413,7 @@ impl State {
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
         		front_face: wgpu::FrontFace::Ccw,
-        		cull_mode: wgpu::CullMode::None,
+        		cull_mode: wgpu::CullMode::Back,
         		depth_bias: 0,
         		depth_bias_slope_scale: 0.0,
         		depth_bias_clamp: 0.0,
@@ -391,6 +443,7 @@ impl State {
         	swap_chain,
         	player_render_pipeline,
         	obstacle_render_pipeline,
+        	road_render_pipeline,
         	index_buffer,
         	player_vertex_buffer,
         	obstacle_vertex_buffer,
@@ -402,6 +455,7 @@ impl State {
         	instances,
         	instance_buffer,
         	speed,
+        	road_vertex_buffer,
         }
 	}
 
@@ -433,19 +487,19 @@ impl State {
 		for i in 0..20 {
 			self.instances[i].position[2] -= self.speed;
 			if self.instances[i].position[2] <= -1.0 {
-				self.instances[i].position[2] = 119.0f32;
+				self.instances[i].position[2] = 149.0f32;
 				self.instances[i].position[0] = rand::random::<f32>() * 10.0 - 5.0;
 			}
 		}
 
-		if self.speed < 1.0f32 {
-			self.speed += 0.001f32;
+		if self.speed < 5.0f32 {
+			self.speed += 0.0005f32;
 		}
-		else if self.speed < 2.5f32 {
-			self.speed += 0.0001f32;
+		else if self.speed < 10.0f32 {
+			self.speed += 0.00005f32;
 		}
 		else {
-			self.speed += 0.00001f32;
+			self.speed += 0.000001f32;
 		}
 	}
 
@@ -464,7 +518,37 @@ impl State {
 						resolve_target: None,
 						load_op: wgpu::LoadOp::Clear,
 						store_op: wgpu::StoreOp::Store,
-						clear_color: wgpu::Color::WHITE,
+						clear_color: wgpu::Color {
+							r: 0.8,
+							g: 0.8,
+							b: 0.8,
+							a: 1.0,
+						},
+					},
+				],
+				depth_stencil_attachment: None,
+			});
+
+			render_pass.set_pipeline(&self.road_render_pipeline);
+			render_pass.set_vertex_buffers(0, &[(&self.road_vertex_buffer, 0)]);
+			render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+			render_pass.draw(0..6, 0..1);
+		}
+
+		{
+			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				color_attachments: &[
+					wgpu::RenderPassColorAttachmentDescriptor {
+						attachment: &frame.view,
+						resolve_target: None,
+						load_op: wgpu::LoadOp::Load,
+						store_op: wgpu::StoreOp::Store,
+						clear_color: wgpu::Color {
+							r: 0.8,
+							g: 0.8,
+							b: 0.8,
+							a: 1.0,
+						},
 					},
 				],
 				depth_stencil_attachment: None,
@@ -485,7 +569,12 @@ impl State {
 						resolve_target: None,
 						load_op: wgpu::LoadOp::Load,
 						store_op: wgpu::StoreOp::Store,
-						clear_color: wgpu::Color::WHITE,
+						clear_color: wgpu::Color {
+							r: 0.8,
+							g: 0.8,
+							b: 0.8,
+							a: 1.0,
+						},
 					},
 				],
 				depth_stencil_attachment: None,
