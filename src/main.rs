@@ -70,6 +70,7 @@ fn main() {
                 }
             }
             Event::MainEventsCleared => {
+            	state.check_collision();
             	state.update_instances();
             	state.update();
             	state.render();
@@ -99,10 +100,12 @@ struct State {
 	speed: f32,
 	instance_buffer: wgpu::Buffer,
 	road_vertex_buffer: wgpu::Buffer,
+	instant: Instant,
 }
 
 impl State {
 	fn new(window: &Window) -> Self {
+		let instant = Instant::now();
 		let inner_size = window.inner_size();
 		let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions{
 			..Default::default()
@@ -127,26 +130,26 @@ impl State {
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
         let road = &[
-        	Vertex { position: [-3.2, -1.0, -1.0], color: [0.3, 0.7, 0.1] },
-        	Vertex { position: [3.2, -1.0, -1.0], color: [0.3, 0.7, 0.1] },
-        	Vertex { position: [3.2, -1.0, 150.0], color: [0.3, 0.7, 0.1] },
-        	Vertex { position: [3.2, -1.0, 150.0], color: [0.3, 0.7, 0.1] },
-        	Vertex { position: [-3.2, -1.0, 150.0], color: [0.3, 0.7, 0.1] },
-        	Vertex { position: [-3.2, -1.0, -1.0], color: [0.3, 0.7, 0.1] },
+        	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2] },
+        	Vertex { position: [4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2] },
+        	Vertex { position: [4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2] },
+        	Vertex { position: [4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2] },
+        	Vertex { position: [-4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2] },
+        	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2] },
         ];
 
         let road_vertex_buffer = device.create_buffer_mapped(road.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(road);
 
         let player = Block {
         	vertices: [
-        		Vertex { position: [-0.4, 0.3, 0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, 0.3, 0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.4, 0.3, -0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, 0.3, -0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, -0.3, 0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, -0.3, -0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.4, -0.3, 0.5], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.4, -0.3, -0.5], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, 0.4, 0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, 0.4, 0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, 0.4, -0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [0.4, -0.4, -0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, -0.4, 0.4], color: [0.2, 0.2, 0.9] },
+        		Vertex { position: [-0.4, -0.4, -0.4], color: [0.2, 0.2, 0.9] },
         	],
         };
 
@@ -170,13 +173,13 @@ impl State {
 		let mut instances  = vec![];
 		for _i in 0..10 {
 			for _j in 0..2 {
-				let xpos = rand::random::<f32>() * 10.0 - 5.0;
+				let xpos = rand::random::<f32>() * 6.0 - 3.0;
 		        let position = cgmath::Vector3 { x: xpos as f32, y: 0.0, z: zpos as f32 };
 		
 		        let rotation = if position.is_zero() {
 		            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
 		        } else {
-		            cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(45.0))
+		            cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(0.0))
 		        };
 		
 		        instances.push(Instance {
@@ -200,7 +203,7 @@ impl State {
 
         let camera = Camera {
     	    eye: (0.0, 6.0, -5.0).into(),
-    	    target: (0.0, 0.0, 6.0).into(),
+    	    target: (0.0, 0.0, 5.0).into(),
     	    up: cgmath::Vector3::unit_y(),
     	    aspect: sc_desc.width as f32 / sc_desc.height as f32,
     	    fovy: 50.0,
@@ -456,6 +459,7 @@ impl State {
         	instance_buffer,
         	speed,
         	road_vertex_buffer,
+        	instant,
         }
 	}
 
@@ -488,7 +492,7 @@ impl State {
 			self.instances[i].position[2] -= self.speed;
 			if self.instances[i].position[2] <= -1.0 {
 				self.instances[i].position[2] = 149.0f32;
-				self.instances[i].position[0] = rand::random::<f32>() * 10.0 - 5.0;
+				self.instances[i].position[0] = rand::random::<f32>() * 6.0 - 3.0;
 			}
 		}
 
@@ -500,6 +504,23 @@ impl State {
 		}
 		else {
 			self.speed += 0.000001f32;
+		}
+	}
+
+	fn check_collision(&self) {
+		for i in 0..20 {
+			if self.instances[i].position[2] <= 1.0 {
+				let z1 = self.instances[i].position[2];
+				let x1 = self.instances[i].position[0];
+				let x2 = self.player_position.position;
+				let d = ((x1 - x2) * (x1 - x2) + z1 * z1).sqrt() as f32;
+				if d < 0.5 {
+					println!("You collided!");
+					let time = Instant::now().duration_since(self.instant).as_secs();
+					println!("Your score is: {}", time);
+					std::process::exit(10);
+				}
+			}
 		}
 	}
 
@@ -519,9 +540,9 @@ impl State {
 						load_op: wgpu::LoadOp::Clear,
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
-							r: 0.8,
-							g: 0.8,
-							b: 0.8,
+							r: 0.2,
+							g: 0.75,
+							b: 0.95,
 							a: 1.0,
 						},
 					},
@@ -544,9 +565,9 @@ impl State {
 						load_op: wgpu::LoadOp::Load,
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
-							r: 0.8,
-							g: 0.8,
-							b: 0.8,
+							r: 0.2,
+							g: 0.75,
+							b: 0.95,
 							a: 1.0,
 						},
 					},
@@ -570,9 +591,9 @@ impl State {
 						load_op: wgpu::LoadOp::Load,
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
-							r: 0.8,
-							g: 0.8,
-							b: 0.8,
+							r: 0.2,
+							g: 0.75,
+							b: 0.95,
 							a: 1.0,
 						},
 					},
