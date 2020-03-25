@@ -14,27 +14,6 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-pub const INDICES: &[u16] = &[
-    //Top
-    0, 2, 1,
-    1, 2, 3,
-    //Right
-    3, 5, 4,
-    4, 1, 3,
-    //Front
-    3, 2, 5,
-    5, 2, 7,
-    //Left
-    7, 2 ,6,
-    6, 2, 0,
-    //Back
-    0, 1, 4,
-    4, 6, 0,
-    //Bottom
-    6, 4, 5,
-    5, 7, 6,
-];
-
 fn main() {
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
@@ -89,7 +68,6 @@ struct State {
 	obstacle_render_pipeline: wgpu::RenderPipeline,
 	road_render_pipeline: wgpu::RenderPipeline,
 	obstacle_bind_group: wgpu::BindGroup,
-	index_buffer: wgpu::Buffer,
 	player_vertex_buffer: wgpu::Buffer,
 	obstacle_vertex_buffer: wgpu::Buffer,
 	player_controller: PlayerController,
@@ -101,6 +79,9 @@ struct State {
 	instance_buffer: wgpu::Buffer,
 	road_vertex_buffer: wgpu::Buffer,
 	instant: Instant,
+	num_road: u32,
+	num_player: u32,
+	num_obstacle: u32,
 }
 
 impl State {
@@ -130,41 +111,109 @@ impl State {
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
         let road = &[
-        	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2] },
-        	Vertex { position: [4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2] },
-        	Vertex { position: [4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2] },
-        	Vertex { position: [4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2] },
-        	Vertex { position: [-4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2] },
-        	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2] },
+        	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [-4.0, -1.0, 150.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
         ];
 
         let road_vertex_buffer = device.create_buffer_mapped(road.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(road);
 
-        let player = Block {
-        	vertices: [
-        		Vertex { position: [-0.4, 0.4, 0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, 0.4, 0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, 0.4, -0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [0.4, -0.4, -0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.4, -0.4, 0.4], color: [0.2, 0.2, 0.9] },
-        		Vertex { position: [-0.4, -0.4, -0.4], color: [0.2, 0.2, 0.9] },
-        	],
-        };
+        let player = &[
+       		//Top
+       		Vertex { position: [-0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 1.0, 0.0] },
+       		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 1.0, 0.0] },
+       		Vertex { position: [0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 1.0, 0.0] },
+       		Vertex { position: [0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 1.0, 0.0] },
+       		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 1.0, 0.0] },
+       		Vertex { position: [0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 1.0, 0.0] },
+       		//Right
+       		Vertex { position: [0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [1.0, 0.0, 0.0] },
+       		Vertex { position: [0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [1.0, 0.0, 0.0] },
+       		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [1.0, 0.0, 0.0] },
+       		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [1.0, 0.0, 0.0] },
+       		Vertex { position: [0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [1.0, 0.0, 0.0] },
+       		Vertex { position: [0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [1.0, 0.0, 0.0] },
+       		//Front
+       		Vertex { position: [0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, -1.0] },
+       		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, -1.0] },
+       		Vertex { position: [0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, -1.0] },
+       		Vertex { position: [0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, -1.0] },
+       		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, -1.0] },
+       		Vertex { position: [-0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, -1.0] },
+       		//Left
+       		Vertex { position: [-0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [-1.0, 0.0, 0.0] },
+       		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [-1.0, 0.0, 0.0] },
+       		Vertex { position: [-0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [-1.0, 0.0, 0.0] },
+       		Vertex { position: [-0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [-1.0, 0.0, 0.0] },
+       		Vertex { position: [-0.4, 0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [-1.0, 0.0, 0.0] },
+       		Vertex { position: [-0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [-1.0, 0.0, 0.0] },
+       		//Back
+       		Vertex { position: [-0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, 1.0] },
+       		Vertex { position: [0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, 1.0] },
+       		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, 1.0] },
+       		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, 1.0] },
+       		Vertex { position: [-0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, 1.0] },
+       		Vertex { position: [-0.4, 0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, 0.0, 1.0] },
+       		//Bottom
+       		Vertex { position: [-0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, -1.0, 0.0] },
+       		Vertex { position: [0.4, -0.4, 0.4], color: [0.2, 0.3, 1.0], normal: [0.0, -1.0, 0.0] },
+       		Vertex { position: [0.4, -0.4, -0.4], color: [0.6, 0.3, 1.0], normal: [0.0, -1.0, 0.0] },
+       		Vertex { position: [0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, -1.0, 0.0] },
+       		Vertex { position: [-0.4, -0.4, -0.4], color: [0.2, 0.3, 1.0], normal: [0.0, -1.0, 0.0] },
+       		Vertex { position: [-0.4, -0.4, 0.4], color: [0.8, 0.3, 1.0], normal: [0.0, -1.0, 0.0] },
+       	];
 
-        let obstacle = Block {
-        	vertices: [
-        		Vertex { position: [-0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2] },
-        		Vertex { position: [-0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2] },
-        	]
-        };
+        let obstacle = &[
+        	//Top
+        	Vertex { position: [-0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	Vertex { position: [0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
+        	//Right
+        	Vertex { position: [0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [1.0, 0.0, 0.0] },
+        	Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [1.0, 0.0, 0.0] },
+        	Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [1.0, 0.0, 0.0] },
+        	Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [1.0, 0.0, 0.0] },
+        	Vertex { position: [0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [1.0, 0.0, 0.0] },
+        	Vertex { position: [0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [1.0, 0.0, 0.0] },
+        	//Front
+        	Vertex { position: [0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, -1.0] },
+        	Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, -1.0] },
+        	Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, -1.0] },
+        	Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, -1.0] },
+        	Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, -1.0] },
+        	Vertex { position: [-0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, -1.0] },
+        	//Left
+        	Vertex { position: [-0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [-1.0, 0.0, 0.0] },
+        	Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [-1.0, 0.0, 0.0] },
+        	Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [-1.0, 0.0, 0.0] },
+        	Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [-1.0, 0.0, 0.0] },
+        	Vertex { position: [-0.2, 0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [-1.0, 0.0, 0.0] },
+        	Vertex { position: [-0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [-1.0, 0.0, 0.0] },
+        	//Back
+        	Vertex { position: [-0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, 1.0] },
+        	Vertex { position: [0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, 1.0] },
+        	Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, 1.0] },
+        	Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, 1.0] },
+        	Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, 1.0] },
+        	Vertex { position: [-0.2, 0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, 0.0, 1.0] },
+        	//Bottom
+        	Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, -1.0, 0.0] },
+        	Vertex { position: [0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, -1.0, 0.0] },
+        	Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, -1.0, 0.0] },
+        	Vertex { position: [0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, -1.0, 0.0] },
+        	Vertex { position: [-0.2, -0.2, -0.2], color: [0.9, 0.2, 0.2], normal: [0.0, -1.0, 0.0] },
+        	Vertex { position: [-0.2, -0.2, 0.2], color: [0.9, 0.2, 0.2], normal: [0.0, -1.0, 0.0] },
+        ];
+
+        let num_obstacle = obstacle.len() as u32;
+        let num_player = player.len() as u32;
+        let num_road = road.len() as u32;
 
         let speed = 0.01f32;
 
@@ -211,11 +260,14 @@ impl State {
     	    zfar: 100.0,
     	};
 
-    	let obstacle_vertex_buffer = device.create_buffer_mapped(obstacle.vertices.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(&obstacle.vertices);
+    	let light = Light {
+		    direction: (-1.0, -0.4, 0.9).into(),
+		};
+		let light_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM).fill_from_slice(&[light]);
 
-        let player_vertex_buffer = device.create_buffer_mapped(player.vertices.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(&player.vertices);
+    	let obstacle_vertex_buffer = device.create_buffer_mapped(obstacle.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(obstacle);
 
-        let index_buffer = device.create_buffer_mapped(INDICES.len(), wgpu::BufferUsage::INDEX).fill_from_slice(INDICES);
+        let player_vertex_buffer = device.create_buffer_mapped(player.len(), wgpu::BufferUsage::VERTEX).fill_from_slice(player);
 
         let mut uniforms = Uniforms::new();
        	uniforms.update_view_proj(&camera);
@@ -234,6 +286,13 @@ impl State {
         		wgpu::BindGroupLayoutBinding {
         			binding: 1,
         			visibility: wgpu::ShaderStage::VERTEX,
+        			ty: wgpu::BindingType::UniformBuffer {
+        				dynamic: false,
+        			},
+        		},
+        		wgpu::BindGroupLayoutBinding {
+        			binding: 2,
+        			visibility: wgpu::ShaderStage::FRAGMENT,
         			ty: wgpu::BindingType::UniformBuffer {
         				dynamic: false,
         			},
@@ -258,6 +317,13 @@ impl State {
         				range: 0..std::mem::size_of_val(&player_position) as wgpu::BufferAddress,
         			},
         		},
+        		wgpu::Binding {
+        			binding: 2,
+        			resource: wgpu::BindingResource::Buffer {
+        				buffer: &light_buffer,
+        				range: 0..std::mem::size_of_val(&light) as wgpu::BufferAddress,
+        			},
+        		},
         	],
         });
 
@@ -273,6 +339,13 @@ impl State {
         		wgpu::BindGroupLayoutBinding {
         			binding: 1,
         			visibility: wgpu::ShaderStage::VERTEX,
+        			ty: wgpu::BindingType::UniformBuffer {
+        				dynamic: false,
+        			},
+        		},
+        		wgpu::BindGroupLayoutBinding {
+        			binding: 2,
+        			visibility: wgpu::ShaderStage::FRAGMENT,
         			ty: wgpu::BindingType::UniformBuffer {
         				dynamic: false,
         			},
@@ -297,16 +370,25 @@ impl State {
         				range: 0..std::mem::size_of_val(&uniforms) as wgpu::BufferAddress,
         			},
         		},
+        		wgpu::Binding {
+        			binding: 2,
+        			resource: wgpu::BindingResource::Buffer {
+        				buffer: &light_buffer,
+        				range: 0..std::mem::size_of_val(&light) as wgpu::BufferAddress,
+        			},
+        		},
         	],
         });
 
         let vs_src = include_str!("player.vert");
         let fs_src = include_str!("shader.frag");
+        let fs_src2 = include_str!("light.frag");
         let vs_src2 = include_str!("obstacle.vert");
         let vs_src3 = include_str!("road.vert");
 
         let vs_spriv = glsl_to_spirv::compile(vs_src, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let fs_spirv = glsl_to_spirv::compile(fs_src, glsl_to_spirv::ShaderType::Fragment).unwrap();
+        let fs_spirv2 = glsl_to_spirv::compile(fs_src2, glsl_to_spirv::ShaderType::Fragment).unwrap();
         let vs_spriv2 = glsl_to_spirv::compile(vs_src2, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let vs_spriv3 = glsl_to_spirv::compile(vs_src3, glsl_to_spirv::ShaderType::Vertex).unwrap();
 
@@ -314,11 +396,13 @@ impl State {
         let vs_data2 = wgpu::read_spirv(vs_spriv2).unwrap();
         let vs_data3 = wgpu::read_spirv(vs_spriv3).unwrap();
         let fs_data = wgpu::read_spirv(fs_spirv).unwrap();
+        let fs_data2 = wgpu::read_spirv(fs_spirv2).unwrap();
 
         let vs_module = device.create_shader_module(&vs_data);
         let vs_module2 = device.create_shader_module(&vs_data2);
         let vs_module3 = device.create_shader_module(&vs_data3);
         let fs_module = device.create_shader_module(&fs_data);
+        let fs_module2 = device.create_shader_module(&fs_data2);
 
         let road_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         	bind_group_layouts: &[&uniform_bind_group_layout],
@@ -335,8 +419,8 @@ impl State {
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-        		front_face: wgpu::FrontFace::Ccw,
-        		cull_mode: wgpu::CullMode::None,
+        		front_face: wgpu::FrontFace::Cw,
+        		cull_mode: wgpu::CullMode::Back,
         		depth_bias: 0,
         		depth_bias_slope_scale: 0.0,
         		depth_bias_clamp: 0.0,
@@ -371,11 +455,11 @@ impl State {
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-        		module: &fs_module,
+        		module: &fs_module2,
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-        		front_face: wgpu::FrontFace::Ccw,
+        		front_face: wgpu::FrontFace::Cw,
         		cull_mode: wgpu::CullMode::Back,
         		depth_bias: 0,
         		depth_bias_slope_scale: 0.0,
@@ -415,7 +499,7 @@ impl State {
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-        		front_face: wgpu::FrontFace::Ccw,
+        		front_face: wgpu::FrontFace::Cw,
         		cull_mode: wgpu::CullMode::Back,
         		depth_bias: 0,
         		depth_bias_slope_scale: 0.0,
@@ -447,7 +531,6 @@ impl State {
         	player_render_pipeline,
         	obstacle_render_pipeline,
         	road_render_pipeline,
-        	index_buffer,
         	player_vertex_buffer,
         	obstacle_vertex_buffer,
         	uniform_bind_group,
@@ -460,6 +543,9 @@ impl State {
         	speed,
         	road_vertex_buffer,
         	instant,
+        	num_road,
+        	num_player,
+        	num_obstacle,
         }
 	}
 
@@ -488,6 +574,7 @@ impl State {
 	}
 
 	fn update_instances(&mut self) {
+		if Instant::now().duration_since(self.instant).as_secs() > 7 {
 		for i in 0..20 {
 			self.instances[i].position[2] -= self.speed;
 			if self.instances[i].position[2] <= -1.0 {
@@ -504,7 +591,7 @@ impl State {
 		}
 		else {
 			self.speed += 0.000001f32;
-		}
+		}}
 	}
 
 	fn check_collision(&self) {
@@ -553,7 +640,7 @@ impl State {
 			render_pass.set_pipeline(&self.road_render_pipeline);
 			render_pass.set_vertex_buffers(0, &[(&self.road_vertex_buffer, 0)]);
 			render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-			render_pass.draw(0..6, 0..1);
+			render_pass.draw(0..self.num_road, 0..1);
 		}
 
 		{
@@ -577,9 +664,8 @@ impl State {
 
 			render_pass.set_pipeline(&self.obstacle_render_pipeline);
 			render_pass.set_vertex_buffers(0, &[(&self.obstacle_vertex_buffer, 0)]);
-			render_pass.set_index_buffer(&self.index_buffer, 0);
 			render_pass.set_bind_group(0, &self.obstacle_bind_group, &[]);
-			render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..self.instances.len() as u32);
+			render_pass.draw(0..self.num_obstacle, 0..self.instances.len() as u32);
 		}
 
 		{
@@ -603,9 +689,8 @@ impl State {
 
 			render_pass.set_pipeline(&self.player_render_pipeline);
 			render_pass.set_vertex_buffers(0, &[(&self.player_vertex_buffer, 0)]);
-			render_pass.set_index_buffer(&self.index_buffer, 0);
 			render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-			render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+			render_pass.draw(0..self.num_player, 0..1);
 		}
 
 		self.queue.submit(&[encoder.finish()]);
@@ -617,6 +702,7 @@ impl State {
 pub struct Vertex {
 	position: [f32; 3],
 	color: [f32; 3],
+	normal: [f32; 3],
 }
 
 impl Vertex {
@@ -635,15 +721,14 @@ impl Vertex {
 					format: wgpu::VertexFormat::Float3,
 					shader_location: 1,
 				},
+				wgpu::VertexAttributeDescriptor {
+					offset: std::mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
+					format: wgpu::VertexFormat::Float3,
+					shader_location: 2,
+				},
 			],
 		}
 	}
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-struct Block {
-	vertices: [Vertex; 8],
 }
 
 #[derive(Debug)]
@@ -756,4 +841,10 @@ impl Instance {
 #[derive(Debug, Clone, Copy)]
 struct PlayerPosition {
 	position: f32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct Light {
+    direction: cgmath::Vector3<f32>,
 }

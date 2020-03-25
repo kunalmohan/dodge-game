@@ -4,6 +4,7 @@ layout(location=0) in vec3 a_position;
 layout(location=1) in vec3 a_color;
 
 layout(location=0) out vec3 v_color;
+layout(location=1) out vec3 v_normal;
 
 layout(set=0, binding=0)
 uniform Instances {
@@ -17,5 +18,7 @@ uniform Uniforms {
 
 void main() {
 	v_color = a_color;
-	gl_Position = u_view_proj * s_models[gl_InstanceIndex] * vec4(a_position, 1.0);
+	mat4 model = s_models[gl_InstanceIndex];
+	v_normal = transpose(inverse(mat3(model))) * vec3(1.0, 0.0, 0.0);
+	gl_Position = u_view_proj * model * vec4(a_position, 1.0);
 }
