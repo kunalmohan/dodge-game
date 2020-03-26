@@ -574,7 +574,6 @@ impl State {
 	}
 
 	fn update_instances(&mut self) {
-		if Instant::now().duration_since(self.instant).as_secs() > 7 {
 		for i in 0..20 {
 			self.instances[i].position[2] -= self.speed;
 			if self.instances[i].position[2] <= -1.0 {
@@ -591,7 +590,7 @@ impl State {
 		}
 		else {
 			self.speed += 0.000001f32;
-		}}
+		}
 	}
 
 	fn check_collision(&self) {
