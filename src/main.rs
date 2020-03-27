@@ -261,7 +261,7 @@ impl State {
     	};
 
     	let light = Light {
-		    direction: (-1.0, -0.4, 0.9).into(),
+		    direction: (-1.0, -0.4, -0.9).into(),
 		};
 		let light_buffer = device.create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM).fill_from_slice(&[light]);
 
@@ -415,7 +415,7 @@ impl State {
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-        		module: &fs_module,
+        		module: &fs_module2,
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
@@ -495,7 +495,7 @@ impl State {
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-        		module: &fs_module,
+        		module: &fs_module2,
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
@@ -627,8 +627,8 @@ impl State {
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
 							r: 0.2,
-							g: 0.75,
-							b: 0.95,
+							g: 0.55,
+							b: 0.15,
 							a: 1.0,
 						},
 					},
@@ -652,8 +652,8 @@ impl State {
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
 							r: 0.2,
-							g: 0.75,
-							b: 0.95,
+							g: 0.55,
+							b: 0.15,
 							a: 1.0,
 						},
 					},
@@ -677,8 +677,8 @@ impl State {
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
 							r: 0.2,
-							g: 0.75,
-							b: 0.95,
+							g: 0.55,
+							b: 0.15,
 							a: 1.0,
 						},
 					},
