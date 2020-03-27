@@ -381,14 +381,12 @@ impl State {
         });
 
         let vs_src = include_str!("player.vert");
-        let fs_src = include_str!("shader.frag");
-        let fs_src2 = include_str!("light.frag");
+        let fs_src = include_str!("light.frag");
         let vs_src2 = include_str!("obstacle.vert");
         let vs_src3 = include_str!("road.vert");
 
         let vs_spriv = glsl_to_spirv::compile(vs_src, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let fs_spirv = glsl_to_spirv::compile(fs_src, glsl_to_spirv::ShaderType::Fragment).unwrap();
-        let fs_spirv2 = glsl_to_spirv::compile(fs_src2, glsl_to_spirv::ShaderType::Fragment).unwrap();
         let vs_spriv2 = glsl_to_spirv::compile(vs_src2, glsl_to_spirv::ShaderType::Vertex).unwrap();
         let vs_spriv3 = glsl_to_spirv::compile(vs_src3, glsl_to_spirv::ShaderType::Vertex).unwrap();
 
@@ -396,13 +394,11 @@ impl State {
         let vs_data2 = wgpu::read_spirv(vs_spriv2).unwrap();
         let vs_data3 = wgpu::read_spirv(vs_spriv3).unwrap();
         let fs_data = wgpu::read_spirv(fs_spirv).unwrap();
-        let fs_data2 = wgpu::read_spirv(fs_spirv2).unwrap();
 
         let vs_module = device.create_shader_module(&vs_data);
         let vs_module2 = device.create_shader_module(&vs_data2);
         let vs_module3 = device.create_shader_module(&vs_data3);
         let fs_module = device.create_shader_module(&fs_data);
-        let fs_module2 = device.create_shader_module(&fs_data2);
 
         let road_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         	bind_group_layouts: &[&uniform_bind_group_layout],
@@ -415,7 +411,7 @@ impl State {
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-        		module: &fs_module2,
+        		module: &fs_module,
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
@@ -455,7 +451,7 @@ impl State {
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-        		module: &fs_module2,
+        		module: &fs_module,
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
@@ -495,7 +491,7 @@ impl State {
         		entry_point: "main",
         	},
         	fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-        		module: &fs_module2,
+        		module: &fs_module,
         		entry_point: "main",
         	}),
         	rasterization_state: Some(wgpu::RasterizationStateDescriptor {
