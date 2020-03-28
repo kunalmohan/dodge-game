@@ -7,6 +7,7 @@ use winit::{
 use std::time::{Instant, Duration};
 use cgmath::prelude::*;
 use wgpu_glyph::{Section, GlyphBrushBuilder};
+use std::thread::sleep;
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -56,6 +57,11 @@ fn main() {
             	state.update();
             	state.render();
                 *control_flow = ControlFlow::WaitUntil(time);
+                if state.collided {
+                    state.render_finish();
+                    sleep(Duration::from_millis(5000));
+                    *control_flow = ControlFlow::Exit;
+                }
             },
             _ => *control_flow = ControlFlow::WaitUntil(time),
         }
@@ -87,6 +93,7 @@ struct State<'a> {
     score: u32,
     font: &'a[u8],
     inner_size: PhysicalSize<u32>,
+    collided: bool,
 }
 
 impl State<'_> {
@@ -528,6 +535,8 @@ impl State<'_> {
         	alpha_to_coverage_enabled: false,
         });
 
+        let collided = false;
+
         Self {
         	device,
         	queue,
@@ -553,6 +562,7 @@ impl State<'_> {
             score,
             font,
             inner_size,
+            collided,
         }
 	}
 
@@ -602,7 +612,7 @@ impl State<'_> {
 		}
 	}
 
-	fn check_collision(&self) {
+	fn check_collision(&mut self) {
 		for i in 0..20 {
 			if self.instances[i].position[2] <= 1.0 {
 				let z1 = self.instances[i].position[2];
@@ -610,10 +620,7 @@ impl State<'_> {
 				let x2 = self.player_position.position;
 				let d = ((x1 - x2) * (x1 - x2) + z1 * z1).sqrt() as f32;
 				if d < 0.5 {
-					println!("You collided!");
-					let time = Instant::now().duration_since(self.instant).as_secs();
-					println!("Your score is: {}", time);
-					std::process::exit(10);
+                    self.collided = true;
 				}
 			}
 		}
@@ -715,6 +722,31 @@ impl State<'_> {
 
 		self.queue.submit(&[encoder.finish()]);
 	}
+
+    fn render_finish(&mut self) {
+        let frame = self.swap_chain.get_next_texture();
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            todo: 0,
+        });
+
+        let render_text = format!("Game Over!\nYour Score:\n         {}", self.score);
+        let section = Section {
+            text: &render_text,
+            scale: wgpu_glyph::Scale::uniform(50.0),
+            color: [1.0, 1.0, 1.0, 1.0],
+            screen_position: (280.0, 220.0),
+            ..Section::default()
+        };
+
+        let font: &[u8] = include_bytes!("font2.ttf");
+        let mut glyph_brush = GlyphBrushBuilder::using_font_bytes(font).unwrap().build(&self.device, wgpu::TextureFormat::Bgra8UnormSrgb);
+
+        glyph_brush.queue(section);
+        glyph_brush.draw_queued(&self.device, &mut encoder, &frame.view, self.inner_size.width, self.inner_size.height);
+
+        self.queue.submit(&[encoder.finish()]);
+    }
 }
 
 #[repr(C)]
