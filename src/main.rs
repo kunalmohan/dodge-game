@@ -2,9 +2,11 @@ use winit::{
     event_loop::{EventLoop, ControlFlow},
     event::*,
     window::Window,
+    dpi::PhysicalSize,
 };
 use std::time::{Instant, Duration};
 use cgmath::prelude::*;
+use wgpu_glyph::{Section, GlyphBrushBuilder};
 
 #[cfg_attr(rustfmt, rustfmt_skip)]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -60,7 +62,7 @@ fn main() {
     });
 }
 
-struct State {
+struct State<'a> {
 	device: wgpu::Device,
 	swap_chain: wgpu::SwapChain,
 	queue: wgpu::Queue,
@@ -82,9 +84,12 @@ struct State {
 	num_road: u32,
 	num_player: u32,
 	num_obstacle: u32,
+    score: u32,
+    font: &'a[u8],
+    inner_size: PhysicalSize<u32>,
 }
 
-impl State {
+impl State<'_> {
 	fn new(window: &Window) -> Self {
 		let instant = Instant::now();
 		let inner_size = window.inner_size();
@@ -109,6 +114,9 @@ impl State {
         };
 
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+
+        let score: u32 = 0;
+        let font: &[u8] = include_bytes!("font.ttf");
 
         let road = &[
         	Vertex { position: [-4.0, -1.0, -1.0], color: [0.2, 0.2, 0.2], normal: [0.0, 1.0, 0.0] },
@@ -542,6 +550,9 @@ impl State {
         	num_road,
         	num_player,
         	num_obstacle,
+            score,
+            font,
+            inner_size,
         }
 	}
 
@@ -551,6 +562,8 @@ impl State {
 
 	fn update(&mut self) {
 		self.player_controller.update_player_position(&mut self.player_position);
+
+        self.score = Instant::now().duration_since(self.instant).as_secs() as u32;
 
 		let tmp_buffer = self.device.create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC).fill_from_slice(&[self.player_position]);
 
@@ -687,6 +700,18 @@ impl State {
 			render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 			render_pass.draw(0..self.num_player, 0..1);
 		}
+
+        let render_text = format!("Your Score: {}", self.score);
+        let section = Section {
+            text: &render_text,
+            scale: wgpu_glyph::Scale::uniform(34.0),
+            color: [1.0, 1.0, 1.0, 1.0],
+            ..Section::default()
+        };
+        let mut glyph_brush = GlyphBrushBuilder::using_font_bytes(self.font).unwrap().build(&self.device, wgpu::TextureFormat::Bgra8UnormSrgb);
+
+        glyph_brush.queue(section);
+        glyph_brush.draw_queued(&self.device, &mut encoder, &frame.view, self.inner_size.width, self.inner_size.height);
 
 		self.queue.submit(&[encoder.finish()]);
 	}
