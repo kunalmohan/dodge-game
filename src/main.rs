@@ -94,6 +94,7 @@ struct State<'a> {
     font: &'a[u8],
     inner_size: PhysicalSize<u32>,
     collided: bool,
+    multisampled_framebuffer: wgpu::TextureView,
 }
 
 impl State<'_> {
@@ -121,6 +122,20 @@ impl State<'_> {
         };
 
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+
+        let multisampled_framebuffer = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: inner_size.width,
+                height: inner_size.height,
+                depth: 1,
+            },
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 16,
+            dimension: wgpu::TextureDimension::D2,
+            format: sc_desc.format,
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+        }).create_default_view();
 
         let score: u32 = 0;
         let font: &[u8] = include_bytes!("font.ttf");
@@ -450,7 +465,7 @@ impl State<'_> {
         	vertex_buffers: &[
         		Vertex::desc(),
         	],
-        	sample_count: 1,
+        	sample_count: 16,
         	sample_mask: !0,
         	alpha_to_coverage_enabled: false,
         });
@@ -490,7 +505,7 @@ impl State<'_> {
         	vertex_buffers: &[
         		Vertex::desc(),
         	],
-        	sample_count: 1,
+        	sample_count: 16,
         	sample_mask: !0,
         	alpha_to_coverage_enabled: false,
         });
@@ -530,7 +545,7 @@ impl State<'_> {
         	vertex_buffers: &[
         		Vertex::desc(),
         	],
-        	sample_count: 1,
+        	sample_count: 16,
         	sample_mask: !0,
         	alpha_to_coverage_enabled: false,
         });
@@ -563,6 +578,7 @@ impl State<'_> {
             font,
             inner_size,
             collided,
+            multisampled_framebuffer,
         }
 	}
 
@@ -637,8 +653,8 @@ impl State<'_> {
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				color_attachments: &[
 					wgpu::RenderPassColorAttachmentDescriptor {
-						attachment: &frame.view,
-						resolve_target: None,
+						attachment: &self.multisampled_framebuffer,
+						resolve_target: Some(&frame.view),
 						load_op: wgpu::LoadOp::Clear,
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
@@ -662,8 +678,8 @@ impl State<'_> {
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				color_attachments: &[
 					wgpu::RenderPassColorAttachmentDescriptor {
-						attachment: &frame.view,
-						resolve_target: None,
+						attachment: &self.multisampled_framebuffer,
+						resolve_target: Some(&frame.view),
 						load_op: wgpu::LoadOp::Load,
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
@@ -687,8 +703,8 @@ impl State<'_> {
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				color_attachments: &[
 					wgpu::RenderPassColorAttachmentDescriptor {
-						attachment: &frame.view,
-						resolve_target: None,
+						attachment: &self.multisampled_framebuffer,
+						resolve_target: Some(&frame.view),
 						load_op: wgpu::LoadOp::Load,
 						store_op: wgpu::StoreOp::Store,
 						clear_color: wgpu::Color {
