@@ -131,7 +131,7 @@ impl State<'_> {
             },
             array_layer_count: 1,
             mip_level_count: 1,
-            sample_count: 16,
+            sample_count: 8,
             dimension: wgpu::TextureDimension::D2,
             format: sc_desc.format,
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
@@ -465,7 +465,7 @@ impl State<'_> {
         	vertex_buffers: &[
         		Vertex::desc(),
         	],
-        	sample_count: 16,
+        	sample_count: 8,
         	sample_mask: !0,
         	alpha_to_coverage_enabled: false,
         });
@@ -505,7 +505,7 @@ impl State<'_> {
         	vertex_buffers: &[
         		Vertex::desc(),
         	],
-        	sample_count: 16,
+        	sample_count: 8,
         	sample_mask: !0,
         	alpha_to_coverage_enabled: false,
         });
@@ -545,7 +545,7 @@ impl State<'_> {
         	vertex_buffers: &[
         		Vertex::desc(),
         	],
-        	sample_count: 16,
+        	sample_count: 8,
         	sample_mask: !0,
         	alpha_to_coverage_enabled: false,
         });
